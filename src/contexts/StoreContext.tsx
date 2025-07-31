@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { Store, UserRole } from '../types';
-import apiClient from '../services/apiClient';
+import { getStores } from '../services/apiClient';
 import { useAuth } from './AuthContext';
 
 interface StoreContextType {
@@ -23,12 +23,6 @@ export const useStore = (): StoreContextType => {
   return context;
 };
 
-// モック店舗データ（開発用）
-const mockStores: Store[] = [
-  { id: 'store1', name: 'メイン店舗', address: '東京都渋谷区...', phone: '03-1234-5678' },
-  { id: 'store2', name: 'サブ店舗', address: '東京都新宿区...', phone: '03-8765-4321' },
-];
-
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { currentUser } = useAuth();
   const [stores, setStores] = useState<Store[]>([]);
@@ -47,29 +41,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setLoading(true);
     setError(null);
     
-    try {
-      console.log('StoreProvider: Fetching stores...');
-      const fetchStores = async () => {
-        try {
-          const fetchedStores = await apiClient.get('/stores');
-          console.log('StoreProvider: Stores fetched successfully:', fetchedStores);
-          setStores(fetchedStores);
-        } catch (err) {
-          console.error('StoreProvider: Error fetching stores:', err);
-          console.log('StoreProvider: Using mock stores as fallback');
-          setStores(mockStores);
-          setError(null);
-        } finally {
-          setLoading(false);
-        }
-      };
-      
-      fetchStores();
-    } catch (err) {
-      console.error('StoreProvider: Error in useEffect:', err);
-      setStores(mockStores);
-      setLoading(false);
-    }
+    const fetchStores = async () => {
+      try {
+        console.log('StoreProvider: Fetching stores...');
+        const fetchedStores = await getStores();
+        console.log('StoreProvider: Stores fetched successfully:', fetchedStores);
+        setStores(fetchedStores);
+      } catch (err) {
+        console.error('StoreProvider: Error fetching stores:', err);
+        setError('店舗情報の取得に失敗しました。');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchStores();
   }, [currentUser]);
 
   useEffect(() => {
