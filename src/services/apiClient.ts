@@ -281,11 +281,17 @@ export const getStaffDashboardData = async (storeId?: string): Promise<StaffDash
 };
 
 export const getMonthlyPurchaseReport = async (month: string, storeId?: string): Promise<MonthlyReportDataPoint[]> => {
-  const params = new URLSearchParams({ month });
-  if (storeId) params.append('storeId', storeId);
-  
-  const response = await fetch(`${BASE_URL}/monthly-report.php?${params}`);
-  return handleResponse(response);
+  try {
+    const params = new URLSearchParams({ month });
+    if (storeId) params.append('storeId', storeId);
+    
+    const response = await fetch(`${BASE_URL}/monthly-report.php?${params}`);
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Monthly report API error:', error);
+    // エラーが発生した場合は空の配列を返す
+    return [];
+  }
 };
 
 export const getStaffUsers = async (): Promise<User[]> => {
