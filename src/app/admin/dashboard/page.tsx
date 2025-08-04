@@ -1,242 +1,309 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { AdminDashboardData } from '@/types';
+import { AdminDashboardData, SupplierMonthlyPerformance, TableHeader } from '@/types';
 import { getAdminDashboardData } from '@/services/apiClient';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import Table from '@/components/Table';
 import { UI_TEXT } from '@/constants';
-import { ArrowDownTrayIcon, ArrowUpTrayIcon, FireIcon, ExclamationTriangleIcon, ChartBarIcon, ArchiveBoxIcon, BellAlertIcon, CurrencyYenIcon, ArchiveBoxXMarkIcon, ArrowPathIcon, BanknotesIcon, InformationCircleIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { QuestionMarkCircleIcon } from '@heroicons/react/24/solid';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import HelpModal from '@/components/HelpModal';
+import ErrorMessage from '@/components/ErrorMessage';
+import { 
+  ArrowDownTrayIcon, 
+  CalendarDaysIcon, 
+  BanknotesIcon, 
+  ArchiveBoxIcon, 
+  BellAlertIcon, 
+  ExclamationTriangleIcon, 
+  ShoppingCartIcon, 
+  CurrencyYenIcon, 
+  ChevronDownIcon, 
+  InformationCircleIcon 
+} from '@heroicons/react/24/outline';
 
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  icon: React.ReactElement<React.SVGProps<SVGSVGElement>>;
-  color: string;
-  subText?: string;
-  tooltip?: string;
-}
-
-const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color, subText, tooltip }) => (
-  <div className="relative group">
-    <div className={`bg-white shadow-lg rounded-xl p-6 flex items-center space-x-4 border-l-4 ${color}`}>
-        <div className={`p-3 rounded-full ${color.replace('border-l-', 'bg-').replace('-500', '-100')}`}>
-          {React.cloneElement(icon, { className: `h-8 w-8 ${color.replace('border-l-', 'text-')}` })}
-        </div>
-        <div>
-          <p className="text-sm text-gray-500 font-medium">{title}</p>
-          <p className="text-2xl font-semibold text-gray-800">{value}</p>
-          {subText && <p className="text-sm text-gray-400">{subText}</p>}
-        </div>
-    </div>
-    {tooltip && (
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 text-sm text-white bg-gray-800 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10">
-        {tooltip}
+const StatCard: React.FC<{ 
+  title: string; 
+  value: string | number; 
+  icon: React.ReactElement<React.SVGProps<SVGSVGElement>>; 
+  subText?: string; 
+  bgColor?: string; 
+  textColor?: string; 
+  borderColor?: string 
+}> = ({ 
+  title, 
+  value, 
+  icon, 
+  subText, 
+  bgColor = 'bg-sky-100', 
+  textColor = 'text-sky-800', 
+  borderColor = 'border-sky-500' 
+}) => (
+  <div className={`bg-white shadow-lg rounded-xl p-5 border-l-4 ${borderColor}`}>
+    <div className="flex items-center space-x-4">
+      <div className={`p-3 rounded-full ${bgColor}`}>
+        {React.cloneElement(icon, { className: `h-7 w-7 ${textColor}` })} 
       </div>
-    )}
+      <div>
+        <p className="text-sm text-gray-500 font-medium">{title}</p>
+        <p className="text-2xl font-semibold text-gray-800">{value}</p>
+        {subText && <p className="text-xs text-gray-400">{subText}</p>}
+      </div>
+    </div>
   </div>
 );
 
+// Helper function to convert data to CSV
+const convertToCSV = (data: SupplierMonthlyPerformance[], headers: { key: keyof SupplierMonthlyPerformance | string, label: string }[]): string => {
+  const headerRow = headers.map(h => h.label).join(',');
+  const rows = data.map(item => {
+    return headers.map(header => {
+      let val = item[header.key as keyof SupplierMonthlyPerformance];
+      if (header.key === 'percentageChange') {
+        val = (Number(val) * 100).toFixed(1) + '%';
+        if (val === 'Infinity%') val = 'N/A';
+      } else if (typeof val === 'number') {
+        val = val.toLocaleString();
+      }
+      return `"${String(val ?? '').replace(/"/g, '""')}"`; // Escape double quotes
+    }).join(',');
+  });
+  return [headerRow, ...rows].join('\r\n');
+};
+
+const downloadCSV = (csvStr: string, filename: string) => {
+  const blob = new Blob([`\uFEFF${csvStr}`], { type: 'text/csv;charset=utf-8;' }); // Add BOM for Excel
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+type PeriodSelectionType = 'specific_month' | 'last_1_month' | 'last_3_months' | 'last_6_months' | 'last_12_months';
+
+const periodOptions: { value: PeriodSelectionType; label: string }[] = [
+  { value: 'specific_month', label: '特定月' },
+  { value: 'last_1_month', label: '過去1ヶ月' },
+  { value: 'last_3_months', label: '過去3ヶ月' },
+  { value: 'last_6_months', label: '過去6ヶ月' },
+  { value: 'last_12_months', label: '過去1年間' },
+];
+
 const AdminDashboardPageComponent: React.FC = () => {
   const { currentUser } = useAuth();
-  const [adminData, setAdminData] = useState<AdminDashboardData | null>(null);
+  const [dashboardData, setDashboardData] = useState<AdminDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showHelp, setShowHelp] = useState(false);
+
+  const [periodType, setPeriodType] = useState<PeriodSelectionType>('specific_month');
+  const [specificMonthValue, setSpecificMonthValue] = useState<string>(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  const fetchDashboardData = useCallback(async (startDate: string, endDate: string, displayLabel: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getAdminDashboardData(startDate, endDate, displayLabel);
+      setDashboardData(data);
+    } catch (err) {
+      console.error('Error loading dashboard data:', err);
+      setError('ダッシュボードデータの読み込みに失敗しました。');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!currentUser) return;
-      
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const currentDate = new Date();
-        const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
-        const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).toISOString().split('T')[0];
-        const periodLabel = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-        
-        const data = await getAdminDashboardData(startDate, endDate, periodLabel);
-        setAdminData(data);
-      } catch (err) {
-        console.error('Failed to fetch admin dashboard data:', err);
-        setError('ダッシュボードデータの取得に失敗しました。');
-      } finally {
-        setLoading(false);
-      }
-    };
+    let startDate: Date;
+    let endDate: Date;
+    let displayLabel: string;
+    const today = new Date();
 
-    fetchData();
-  }, [currentUser]);
+    switch (periodType) {
+      case 'last_1_month':
+        endDate = new Date(today.getFullYear(), today.getMonth(), 0); // End of last month
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1); // Start of last month
+        displayLabel = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`;
+        break;
+      case 'last_3_months':
+        endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 2, 1);
+        displayLabel = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')} 〜 ${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`;
+        break;
+      case 'last_6_months':
+        endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 5, 1);
+        displayLabel = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')} 〜 ${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`;
+        break;
+      case 'last_12_months':
+        endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+        startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 11, 1);
+        displayLabel = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')} 〜 ${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`;
+        break;
+      default: // specific_month
+        const [year, month] = specificMonthValue.split('-').map(Number);
+        startDate = new Date(year, month - 1, 1);
+        endDate = new Date(year, month, 0);
+        displayLabel = specificMonthValue;
+    }
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <p className="text-red-800">{error}</p>
-        </div>
-      </div>
+    fetchDashboardData(
+      startDate.toISOString().split('T')[0],
+      endDate.toISOString().split('T')[0],
+      displayLabel
     );
-  }
+  }, [periodType, specificMonthValue, fetchDashboardData]);
 
-  if (!adminData) {
-    return (
-      <div className="p-6">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-          <p className="text-yellow-800">データが利用できません。</p>
-        </div>
-      </div>
-    );
-  }
+  const handleExportCSV = () => {
+    if (!dashboardData?.selectedPeriodSummary?.supplierPerformances) return;
+    
+    const headers = [
+      { key: 'supplierName', label: '仕入先名' },
+      { key: 'currentPeriodTotal', label: '当期合計' },
+      { key: 'previousPeriodTotal', label: '前期合計' },
+      { key: 'difference', label: '差額' },
+      { key: 'percentageChange', label: '変化率' },
+    ];
+    
+    const csvContent = convertToCSV(dashboardData.selectedPeriodSummary.supplierPerformances, headers);
+    downloadCSV(csvContent, `supplier_performance_${dashboardData.selectedPeriodSummary.periodLabel}.csv`);
+  };
+
+  const tableHeaders: TableHeader<SupplierMonthlyPerformance>[] = [
+    { key: 'supplierName', label: '仕入先名' },
+    { key: 'currentPeriodTotal', label: '当期合計', render: (item) => `¥${item.currentPeriodTotal.toLocaleString()}` },
+    { key: 'previousPeriodTotal', label: '前期合計', render: (item) => `¥${item.previousPeriodTotal.toLocaleString()}` },
+    { key: 'difference', label: '差額', render: (item) => `¥${item.difference.toLocaleString()}` },
+    { key: 'percentageChange', label: '変化率', render: (item) => `${(item.percentageChange * 100).toFixed(1)}%` },
+  ];
+
+  if (loading) return <LoadingSpinner message="ダッシュボードデータを読み込み中..." />;
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">管理ダッシュボード</h1>
-        <div className="flex items-center space-x-4">
-          <a
-            href="/dashboard"
-            className="flex items-center space-x-2 px-4 py-2 text-blue-600 hover:text-blue-800 font-medium"
-          >
-            <ArrowLeftIcon className="h-5 w-5" />
-            <span>スタッフメニューに戻る</span>
-          </a>
-          <button
-            onClick={() => setShowHelp(true)}
-            className="p-2 text-gray-400 hover:text-gray-600"
-          >
-            <QuestionMarkCircleIcon className="h-6 w-6" />
-          </button>
+    <div className="space-y-8">
+      {/* ヘッダー */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">管理ダッシュボード</h1>
+            <p className="text-gray-600 mt-2">システム全体の統計情報を確認できます</p>
+          </div>
+          <div className="flex items-center space-x-4">
+            <select
+              value={periodType}
+              onChange={(e) => setPeriodType(e.target.value as PeriodSelectionType)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {periodOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            {periodType === 'specific_month' && (
+              <input
+                type="month"
+                value={specificMonthValue}
+                onChange={(e) => setSpecificMonthValue(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+            <button
+              onClick={handleExportCSV}
+              disabled={!dashboardData?.selectedPeriodSummary?.supplierPerformances}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+              <span>CSV出力</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* エラーメッセージ */}
+      {error && <ErrorMessage message={error} />}
 
       {/* 統計カード */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title={UI_TEXT.TOTAL_INVENTORY_VALUE}
-          value={`¥${adminData.totalInventoryValue.toLocaleString()}`}
-          icon={<CurrencyYenIcon />}
-          color="border-l-blue-500"
-          tooltip="現在の総在庫評価額"
-        />
-        <StatCard
-          title={UI_TEXT.LOW_STOCK_ITEMS_COUNT}
-          value={adminData.lowStockItemsCount}
-          icon={<ExclamationTriangleIcon />}
-          color="border-l-red-500"
-          tooltip="在庫が最低在庫数を下回っている商品数"
-        />
-        <StatCard
-          title={UI_TEXT.PENDING_INTAKE_APPROVALS}
-          value={adminData.pendingIntakeApprovals}
-          icon={<BellAlertIcon />}
-          color="border-l-yellow-500"
-          tooltip="承認待ちの入荷処理数"
-        />
-        <StatCard
-          title={UI_TEXT.OBSOLETE_STOCK_ITEMS_COUNT}
-          value={adminData.obsoleteStockItemsCount}
-          icon={<ArchiveBoxXMarkIcon />}
-          color="border-l-orange-500"
-          tooltip="不良在庫として分類されている商品数"
-        />
-      </div>
-
-      {/* 期間別サマリー */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">期間別サマリー ({adminData.selectedPeriodSummary.periodLabel})</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="text-center">
-            <p className="text-sm text-gray-500">期間合計</p>
-            <p className="text-2xl font-bold text-blue-600">¥{adminData.selectedPeriodSummary.totalForPeriod.toLocaleString()}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-gray-500">前年同期</p>
-            <p className="text-2xl font-bold text-gray-600">¥{adminData.selectedPeriodSummary.totalForPreviousPeriod.toLocaleString()}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-gray-500">増減</p>
-            <p className={`text-2xl font-bold ${adminData.selectedPeriodSummary.totalForPeriod > adminData.selectedPeriodSummary.totalForPreviousPeriod ? 'text-green-600' : 'text-red-600'}`}>
-              {adminData.selectedPeriodSummary.totalForPeriod > adminData.selectedPeriodSummary.totalForPreviousPeriod ? '+' : ''}
-              ¥{(adminData.selectedPeriodSummary.totalForPeriod - adminData.selectedPeriodSummary.totalForPreviousPeriod).toLocaleString()}
-            </p>
-          </div>
+      {dashboardData && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <StatCard
+            title="総在庫価値"
+            value={`¥${dashboardData.totalInventoryValue.toLocaleString()}`}
+            icon={<CurrencyYenIcon />}
+            bgColor="bg-green-100"
+            textColor="text-green-800"
+            borderColor="border-green-500"
+          />
+          <StatCard
+            title="低在庫商品数"
+            value={dashboardData.lowStockItemsCount}
+            icon={<ExclamationTriangleIcon />}
+            bgColor="bg-yellow-100"
+            textColor="text-yellow-800"
+            borderColor="border-yellow-500"
+          />
+          <StatCard
+            title="入荷承認待ち"
+            value={dashboardData.pendingIntakeApprovals}
+            icon={<BellAlertIcon />}
+            bgColor="bg-blue-100"
+            textColor="text-blue-800"
+            borderColor="border-blue-500"
+          />
+          <StatCard
+            title="廃番在庫数"
+            value={dashboardData.obsoleteStockItemsCount}
+            icon={<ArchiveBoxIcon />}
+            bgColor="bg-red-100"
+            textColor="text-red-800"
+            borderColor="border-red-500"
+          />
         </div>
-      </div>
+      )}
 
-      {/* 仕入先別パフォーマンス */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">仕入先別パフォーマンス</h2>
-        <div className="space-y-4">
-          {adminData.selectedPeriodSummary.supplierPerformances.map((supplier) => (
-            <div key={supplier.supplierId} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-              <div>
-                <p className="font-medium">{supplier.supplierName}</p>
-                <p className="text-sm text-gray-500">
-                  期間合計: ¥{supplier.currentPeriodTotal.toLocaleString()}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className={`font-medium ${supplier.percentageChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {supplier.percentageChange >= 0 ? '+' : ''}{(supplier.percentageChange * 100).toFixed(1)}%
-                </p>
-                <p className="text-sm text-gray-500">
-                  前年同期: ¥{supplier.previousPeriodTotal.toLocaleString()}
-                </p>
-              </div>
+      {/* 仕入先パフォーマンス */}
+      {dashboardData?.selectedPeriodSummary && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">仕入先パフォーマンス</h2>
+            <div className="text-sm text-gray-600">
+              期間: {dashboardData.selectedPeriodSummary.periodLabel}
             </div>
-          ))}
+          </div>
+          <div className="overflow-x-auto">
+            <Table headers={tableHeaders} data={dashboardData.selectedPeriodSummary.supplierPerformances} itemKey="supplierId" />
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* 在庫推移グラフ */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">在庫推移</h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={adminData.inventoryMovement}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="month" />
-            <YAxis />
-            <Tooltip formatter={(value) => [`¥${value.toLocaleString()}`, '']} />
-            <Legend />
-            <Line type="monotone" dataKey="intake" stroke="#3B82F6" name="入荷" />
-            <Line type="monotone" dataKey="outbound" stroke="#EF4444" name="出庫" />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* カテゴリ別パフォーマンス */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">カテゴリ別パフォーマンス</h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={adminData.categoryPerformance}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="categoryName" />
-            <YAxis />
-            <Tooltip formatter={(value) => [`¥${value.toLocaleString()}`, '']} />
-            <Legend />
-            <Bar dataKey="inventoryValue" fill="#3B82F6" name="在庫評価額" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
+      {/* 在庫ウォッチリスト */}
+      {dashboardData?.inventoryWatchlist && dashboardData.inventoryWatchlist.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">在庫ウォッチリスト</h2>
+          <div className="space-y-3">
+            {dashboardData.inventoryWatchlist.map((item, index) => (
+              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <p className="font-medium">{item.product.name}</p>
+                  <p className="text-sm text-gray-600">現在在庫: {item.product.currentStock}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-600">理由: {item.reason}</p>
+                  <p className="text-xs text-gray-500">{item.daysSinceLastUpdate}日前の更新</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-// 動的インポートでSSRを無効化
-const AdminDashboardPage = dynamic(() => Promise.resolve(AdminDashboardPageComponent), {
-  ssr: false,
-});
-
+const AdminDashboardPage = dynamic(() => Promise.resolve(AdminDashboardPageComponent), { ssr: false });
 export default AdminDashboardPage; 

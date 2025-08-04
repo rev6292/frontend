@@ -1,20 +1,18 @@
-'use client';
 
-import dynamic from 'next/dynamic';
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Product, Supplier, UserRole, TableHeader, Category, ProductWithStock } from '@/types';
-import { getProducts, getSuppliers, getCategories, addProduct, updateProductAndInventory, deleteProduct, generateDescriptionMock, findProductByBarcode } from '@/services/apiClient';
-import Modal from '@/components/Modal';
-import Table from '@/components/Table';
-import LoadingSpinner from '@/components/LoadingSpinner';
-import { UI_TEXT, BARCODE_SCANNER_PLACEHOLDER } from '@/constants';
-import { useAuth } from '@/contexts/AuthContext';
-import { usePurchaseList } from '@/contexts/PurchaseListContext'; 
-import { useStore } from '@/contexts/StoreContext';
+import { Product, Supplier, UserRole, TableHeader, Category, ProductWithStock } from '../types';
+import apiClient from '../services/apiClient';
+import Modal from '../components/Modal';
+import Table from '../components/Table';
+import LoadingSpinner from '../components/LoadingSpinner';
+import { UI_TEXT, BARCODE_SCANNER_PLACEHOLDER } from '../constants';
+import { useAuth } from '../contexts/AuthContext';
+import { usePurchaseList } from '../contexts/PurchaseListContext'; 
+import { useStore } from '../contexts/StoreContext';
 import { PlusCircleIcon, PencilIcon, TrashIcon, CameraIcon, SparklesIcon, ShoppingCartIcon, BellAlertIcon, ArchiveBoxXMarkIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
-import Link from 'next/link'; // react-router-dom の Link から変更
-import { ROUTE_PATHS } from '@/constants';
-import ErrorMessage from '@/components/ErrorMessage';
+import { Link } from 'react-router-dom';
+import { ROUTE_PATHS } from '../constants';
 
 
 const initialProductFormState: ProductWithStock = {
@@ -52,14 +50,7 @@ const ProductForm: React.FC<{
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    
-    // 数値フィールドの場合、全角数字を半角に変換
-    if (name === 'currentStock' || name === 'minimumStock' || name === 'costPrice') {
-      const convertedValue = value.replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-      setFormData(prev => ({ ...prev, [name]: parseFloat(convertedValue) || 0 }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
+    setFormData(prev => ({ ...prev, [name]: name === 'currentStock' || name === 'minimumStock' || name === 'costPrice' ? parseFloat(value) || 0 : value }));
   };
   
   const handleParentCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -82,7 +73,7 @@ const ProductForm: React.FC<{
     setIsGeneratingDescription(true);
     setGenerationError(null);
     try {
-      const description = await generateDescriptionMock(formData.name, categoryName);
+      const description = await apiClient.post('/gemini/description', { productName: formData.name, category: categoryName });
       setFormData(prev => ({ ...prev, description: description }));
     } catch (err) {
       console.error("Description generation failed:", err);
@@ -112,33 +103,11 @@ const ProductForm: React.FC<{
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label htmlFor="currentStock" className="block text-sm font-medium text-gray-700">{UI_TEXT.CURRENT_STOCK}</label>
-          <input 
-            type="number" 
-            name="currentStock" 
-            id="currentStock" 
-            value={formData.currentStock} 
-            onChange={handleChange} 
-            required 
-            className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm bg-slate-900 text-white placeholder-slate-400 border-slate-700 focus:ring-indigo-500 focus:border-indigo-500 ${formData.currentStock < 0 ? 'border-red-500' : ''}`} 
-          />
-          {formData.currentStock < 0 && (
-            <p className="mt-1 text-sm text-red-600">⚠️ マイナスの在庫数は通常ありえません。確認してください。</p>
-          )}
+          <input type="number" name="currentStock" id="currentStock" value={formData.currentStock} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm bg-slate-900 text-white placeholder-slate-400 border-slate-700 focus:ring-indigo-500 focus:border-indigo-500" />
         </div>
         <div>
           <label htmlFor="minimumStock" className="block text-sm font-medium text-gray-700">{UI_TEXT.MINIMUM_STOCK}</label>
-          <input 
-            type="number" 
-            name="minimumStock" 
-            id="minimumStock" 
-            value={formData.minimumStock} 
-            onChange={handleChange} 
-            required 
-            className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm bg-slate-900 text-white placeholder-slate-400 border-slate-700 focus:ring-indigo-500 focus:border-indigo-500 ${formData.minimumStock < 0 ? 'border-red-500' : ''}`} 
-          />
-          {formData.minimumStock < 0 && (
-            <p className="mt-1 text-sm text-red-600">⚠️ マイナスの最低在庫数は設定できません。</p>
-          )}
+          <input type="number" name="minimumStock" id="minimumStock" value={formData.minimumStock} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm bg-slate-900 text-white placeholder-slate-400 border-slate-700 focus:ring-indigo-500 focus:border-indigo-500" />
         </div>
       </div>
       <div>
@@ -199,17 +168,7 @@ const ProductForm: React.FC<{
        {isAdmin && (
         <div>
           <label htmlFor="costPrice" className="block text-sm font-medium text-gray-700">{UI_TEXT.COST_PRICE} (¥)</label>
-          <input 
-            type="number" 
-            name="costPrice" 
-            id="costPrice" 
-            value={formData.costPrice} 
-            onChange={handleChange} 
-            className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm bg-slate-900 text-white placeholder-slate-400 border-slate-700 focus:ring-indigo-500 focus:border-indigo-500 ${formData.costPrice < 0 ? 'border-red-500' : ''}`} 
-          />
-          {formData.costPrice < 0 && (
-            <p className="mt-1 text-sm text-red-600">⚠️ マイナスの仕入単価は設定できません。</p>
-          )}
+          <input type="number" name="costPrice" id="costPrice" value={formData.costPrice} onChange={handleChange} className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm bg-slate-900 text-white placeholder-slate-400 border-slate-700 focus:ring-indigo-500 focus:border-indigo-500" />
         </div>
       )}
       <div>
@@ -242,7 +201,7 @@ const ProductForm: React.FC<{
 };
 
 
-const InventoryPageComponent: React.FC = () => {
+const InventoryPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { selectedStoreId } = useStore();
   const { addToPurchaseList, getTotalItems: getTotalPurchaseListItems } = usePurchaseList();
@@ -276,11 +235,11 @@ const InventoryPageComponent: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-            const [productsData, suppliersData, categoriesData] = await Promise.all([
-        getProducts(selectedStoreId),
-        getSuppliers(),
-        getCategories()
-      ]);
+      const [productsData, suppliersData, categoriesData] = await Promise.all([
+          apiClient.get('/products', { storeId: selectedStoreId }), 
+          apiClient.get('/suppliers'),
+          apiClient.get('/categories')
+        ]);
       setProducts(productsData);
       setSuppliers(suppliersData);
       setCategories(categoriesData);
@@ -379,13 +338,17 @@ const InventoryPageComponent: React.FC = () => {
     
     const { currentStock, minimumStock, ...productFields } = productData;
     const productToSave = { ...productFields, category: categoryName };
+    const stockInfo = { currentStock, minimumStock };
+    const payload = { product: productToSave, stock: stockInfo, storeId: selectedStoreId };
 
     try {
       if ('id' in productToSave && productToSave.id) {
-        await updateProductAndInventory(productToSave, { currentStock, minimumStock }, selectedStoreId);
+        await apiClient.put(`/products/${productToSave.id}`, payload);
+        await apiClient.post('/logs', { action: `${productToSave.name} を更新`, userId: currentUser?.id });
       } else {
         const { id, ...newProductFields } = productToSave;
-        await addProduct(newProductFields, { currentStock, minimumStock, storeId: selectedStoreId });
+        await apiClient.post('/products', { ...payload, product: newProductFields });
+        await apiClient.post('/logs', { action: `${productToSave.name} を追加`, userId: currentUser?.id });
       }
       fetchAllData();
       handleCloseModal();
@@ -401,7 +364,8 @@ const InventoryPageComponent: React.FC = () => {
     if (!product) return;
     setLoading(true);
     try {
-      await deleteProduct(product.id);
+      await apiClient.delete(`/products/${product.id}`);
+      await apiClient.post('/logs', { action: `${product.name} を削除`, userId: currentUser?.id });
       fetchAllData();
       setShowConfirmDelete(null); 
       showToast(`商品「${product.name}」を削除しました。`);
@@ -420,7 +384,7 @@ const InventoryPageComponent: React.FC = () => {
     setLoading(true);
     setScannedProductInfo(null);
     try {
-      const product = await findProductByBarcode(barcodeInput.trim(), selectedStoreId);
+      const product: ProductWithStock = await apiClient.get('/products', { barcode: barcodeInput.trim(), storeId: selectedStoreId });
       if (product) {
         setScannedProductInfo(`商品名: ${product.name}, 現在庫: ${product.currentStock}`);
         handleOpenModal(product); 
@@ -509,7 +473,7 @@ const InventoryPageComponent: React.FC = () => {
         <h1 className="text-3xl font-semibold text-gray-800">在庫管理</h1>
         <div className="flex items-center gap-3">
           <Link 
-            href={`${ROUTE_PATHS.INTAKE}?tab=purchase`} // to の代わりに href
+            to={`${ROUTE_PATHS.INTAKE}?tab=purchase`} 
             className="flex items-center bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition-colors text-sm"
           >
             <ShoppingCartIcon className="h-5 w-5 mr-2" />
@@ -600,7 +564,7 @@ const InventoryPageComponent: React.FC = () => {
       </div>
       
       {loading && <LoadingSpinner message={UI_TEXT.LOADING} />}
-      {error && <ErrorMessage message={error} />}
+      {error && <p className="text-red-500 p-4 bg-red-100 rounded-md">{error}</p>}
       
       {!loading && !error && (
         <Table headers={productTableHeaders} data={filteredProducts} itemKey="id" onRowClick={handleOpenModal} />
@@ -681,10 +645,5 @@ const InventoryPageComponent: React.FC = () => {
     </div>
   );
 };
-
-// 動的インポートでSSRを無効化
-const InventoryPage = dynamic(() => Promise.resolve(InventoryPageComponent), {
-  ssr: false,
-});
 
 export default InventoryPage;

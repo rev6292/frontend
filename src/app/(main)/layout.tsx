@@ -21,9 +21,7 @@ const MainLayoutComponent: React.FC<{ children: React.ReactNode }> = ({ children
   const pathname = usePathname(); // useLocation().pathname の代わりに usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // デバッグ用：currentUserの状態をログ出力
-  console.log('MainLayout: currentUser:', currentUser);
-  console.log('MainLayout: pathname:', pathname);
+
 
   const availableNavItems = useMemo(() => {
     if (!currentUser) return [];
@@ -38,7 +36,6 @@ const MainLayoutComponent: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ログインしていない場合は、ログインページへリダイレクト
   if (!currentUser) {
-    console.log('MainLayout: currentUser is null, redirecting to login');
     // ログインページにリダイレクト
     if (typeof window !== 'undefined') {
       window.location.href = '/';
@@ -46,7 +43,7 @@ const MainLayoutComponent: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   }
 
-  console.log('MainLayout: Rendering layout with currentUser:', currentUser);
+
 
   // 管理者ページの場合は、AdminLayoutが適用されるため、このチェックは不要になる可能性が高い
   // if (pathname.startsWith('/admin')) {

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- ホスト: localhost
--- 生成日時: 2025 年 7 月 31 日 03:25
+-- 生成日時: 2025 年 8 月 02 日 05:58
 -- サーバのバージョン： 10.5.22-MariaDB-log
 -- PHP のバージョン: 8.0.30
 
@@ -35,6 +35,18 @@ CREATE TABLE `categories` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- テーブルのデータのダンプ `categories`
+--
+
+INSERT INTO `categories` (`id`, `name`, `parent_id`, `created_at`, `updated_at`) VALUES
+('cat_688af0b2de588', 'カラー', NULL, '2025-07-31 04:27:30', '2025-07-31 04:27:30'),
+('cat_688af5c1103fa', 'Aujua', NULL, '2025-07-31 04:49:05', '2025-07-31 04:49:05'),
+('cat_688af68adaee2', 'Aujua', NULL, '2025-07-31 04:52:26', '2025-07-31 04:52:26'),
+('cat_688af90786a2a', 'Aujua', NULL, '2025-07-31 05:03:03', '2025-07-31 05:03:03'),
+('cat_688c08d5b5219', 'パーマ', NULL, '2025-08-01 00:22:45', '2025-08-01 00:22:45'),
+('cat_688d21154c749', 'トリートメント', NULL, '2025-08-01 20:18:29', '2025-08-01 20:18:29');
+
 -- --------------------------------------------------------
 
 --
@@ -53,6 +65,13 @@ CREATE TABLE `company_info` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- テーブルのデータのダンプ `company_info`
+--
+
+INSERT INTO `company_info` (`id`, `name`, `address`, `phone`, `fax`, `website`, `representative_name`, `created_at`, `updated_at`) VALUES
+('main', '有限会社XINGFU', '東京都渋谷区...', '03-1234-5678', '', '', '', '2025-07-31 00:00:35', '2025-08-01 20:23:08');
+
 -- --------------------------------------------------------
 
 --
@@ -60,12 +79,44 @@ CREATE TABLE `company_info` (
 --
 
 CREATE TABLE `inventory_records` (
+  `id` varchar(50) NOT NULL,
   `product_id` varchar(255) NOT NULL,
   `store_id` varchar(255) NOT NULL,
   `current_stock` int(11) NOT NULL DEFAULT 0,
   `minimum_stock` int(11) NOT NULL DEFAULT 0,
-  `last_updated` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `last_updated` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- テーブルの構造 `logs`
+--
+
+CREATE TABLE `logs` (
+  `id` int(11) NOT NULL,
+  `action` text NOT NULL,
+  `user_id` varchar(50) DEFAULT NULL,
+  `timestamp` timestamp NOT NULL DEFAULT current_timestamp(),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- テーブルのデータのダンプ `logs`
+--
+
+INSERT INTO `logs` (`id`, `action`, `user_id`, `timestamp`, `created_at`) VALUES
+(1, 'カテゴリ カラー を新規追加', 'ukki629', '2025-07-30 19:27:31', '2025-07-31 04:27:31'),
+(2, 'カテゴリ パーマ を新規追加', 'ukki629', '2025-07-30 19:27:46', '2025-07-31 04:27:46'),
+(3, 'カテゴリ Aujua を新規追加', 'ukki629', '2025-07-30 19:29:56', '2025-07-31 04:29:56'),
+(4, 'カテゴリ Aujua を新規追加', 'ukki629', '2025-07-30 19:48:33', '2025-07-31 04:48:33'),
+(5, 'カテゴリ Aujua を新規追加', 'ukki629', '2025-07-30 19:49:05', '2025-07-31 04:49:05'),
+(6, 'カテゴリ Aujua を新規追加', 'ukki629', '2025-07-30 19:52:26', '2025-07-31 04:52:26'),
+(7, 'カテゴリ Aujua を新規追加', 'ukki629', '2025-07-30 20:03:03', '2025-07-31 05:03:03'),
+(8, 'カテゴリ パーマ を新規追加', 'ukki629', '2025-07-31 15:22:45', '2025-08-01 00:22:45'),
+(9, '店舗 寿町店 を新規追加', 'ukki629', '2025-07-31 16:43:03', '2025-08-01 01:43:03'),
+(10, '会社情報を更新しました', 'ukki629', '2025-08-01 11:23:08', '2025-08-01 20:23:08');
 
 -- --------------------------------------------------------
 
@@ -74,12 +125,13 @@ CREATE TABLE `inventory_records` (
 --
 
 CREATE TABLE `outbound_logs` (
-  `id` int(11) NOT NULL,
+  `id` varchar(50) NOT NULL,
   `product_id` varchar(255) NOT NULL,
   `store_id` varchar(255) NOT NULL,
+  `operator_id` varchar(50) NOT NULL,
   `quantity` int(11) NOT NULL,
-  `outbound_date` datetime NOT NULL DEFAULT current_timestamp(),
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `date` timestamp NOT NULL DEFAULT current_timestamp(),
+  `notes` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -146,15 +198,19 @@ CREATE TABLE `purchase_order_items` (
 CREATE TABLE `scheduled_intake_items` (
   `id` varchar(255) NOT NULL,
   `product_id` varchar(255) NOT NULL,
+  `barcode` varchar(100) DEFAULT NULL,
   `product_name` varchar(255) NOT NULL,
   `quantity` int(11) NOT NULL,
+  `price_per_unit` decimal(10,2) DEFAULT NULL,
   `cost_price_at_intake` decimal(10,2) DEFAULT NULL,
-  `status` varchar(50) NOT NULL,
+  `status` enum('PENDING_APPROVAL','APPROVED','RECEIVED','MANUAL_CHECK_NEEDED','REJECTED') NOT NULL DEFAULT 'PENDING_APPROVAL',
   `supplier_id` varchar(255) NOT NULL,
   `supplier_name` varchar(255) NOT NULL,
   `store_id` varchar(255) NOT NULL,
+  `estimated_arrival_date` date DEFAULT NULL,
   `received_date` datetime DEFAULT NULL,
   `notes` text DEFAULT NULL,
+  `invoice_reference` varchar(100) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -179,7 +235,8 @@ CREATE TABLE `stores` (
 --
 
 INSERT INTO `stores` (`id`, `name`, `address`, `phone`, `created_at`, `updated_at`) VALUES
-('store_101', '本店', '神奈川県秦野市元町5-12', '0463816807', '2025-07-29 05:33:11', '2025-07-29 05:33:11');
+('store_101', '本店', '神奈川県秦野市元町5-12', '0463816807', '2025-07-29 05:33:11', '2025-07-29 05:33:11'),
+('store_688c1ba6dba3e', '寿町店', '神奈川県秦野市寿町4-11', '0463841692', '2025-08-01 01:43:02', '2025-08-01 01:43:02');
 
 -- --------------------------------------------------------
 
@@ -199,6 +256,13 @@ CREATE TABLE `suppliers` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- テーブルのデータのダンプ `suppliers`
+--
+
+INSERT INTO `suppliers` (`id`, `name`, `contact_person`, `phone`, `email`, `address`, `line_id`, `created_at`, `updated_at`) VALUES
+('supp_2', 'mitui', '担当者B', '03-3333-4444', NULL, NULL, NULL, '2025-07-31 00:00:34', '2025-07-31 00:00:34');
+
 -- --------------------------------------------------------
 
 --
@@ -208,7 +272,7 @@ CREATE TABLE `suppliers` (
 CREATE TABLE `users` (
   `id` varchar(255) NOT NULL,
   `name` varchar(255) NOT NULL,
-  `role` varchar(50) NOT NULL,
+  `role` enum('ADMIN','STAFF') NOT NULL DEFAULT 'STAFF',
   `store_id` varchar(255) DEFAULT NULL,
   `hashed_password` varchar(255) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -222,7 +286,8 @@ CREATE TABLE `users` (
 INSERT INTO `users` (`id`, `name`, `role`, `store_id`, `hashed_password`, `created_at`, `updated_at`) VALUES
 ('1', 'admin', 'ADMIN', 'store_101', '$2y$10$42cbPLT8wCYWlIz/WbrR3.dnU73qvQHurBHSDpGSIzXC7NHg29f56', '2025-07-29 05:16:39', '2025-07-29 19:18:44'),
 ('2', 'test', 'ADMIN', 'store_101', '$2y$10$WC5i9/nTBdq8jZHxSmv8jeNsvJDPU16kd5aYtXmpdAAJH1N0k.Kaq', '2025-07-29 18:29:04', '2025-07-29 19:41:51'),
-('ukki629', 'ukki629', 'ADMIN', 'store_101', '$2y$10$BbHjBD0XeLW81L.gKG8rIumdozubk4KoB9b3rBUfoyEvgip17m2oK', '2025-07-29 17:50:22', '2025-07-29 19:42:44');
+('ukki629', 'ukki629', 'ADMIN', 'store_101', '$2y$10$BbHjBD0XeLW81L.gKG8rIumdozubk4KoB9b3rBUfoyEvgip17m2oK', '2025-07-29 17:50:22', '2025-07-29 19:42:44'),
+('user_688aeedcb5c99', 'yuri', 'STAFF', NULL, '$2y$10$2VA1hrgJK66RBzWc8RQdYeoxdQm6kP9ihWZGtOc99J8StFBNq0G4W', '2025-07-31 04:19:40', '2025-07-31 04:19:40');
 
 --
 -- ダンプしたテーブルのインデックス
@@ -245,8 +310,15 @@ ALTER TABLE `company_info`
 -- テーブルのインデックス `inventory_records`
 --
 ALTER TABLE `inventory_records`
-  ADD PRIMARY KEY (`product_id`,`store_id`),
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_product_store` (`product_id`,`store_id`),
   ADD KEY `store_id` (`store_id`);
+
+--
+-- テーブルのインデックス `logs`
+--
+ALTER TABLE `logs`
+  ADD PRIMARY KEY (`id`);
 
 --
 -- テーブルのインデックス `outbound_logs`
@@ -254,7 +326,8 @@ ALTER TABLE `inventory_records`
 ALTER TABLE `outbound_logs`
   ADD PRIMARY KEY (`id`),
   ADD KEY `product_id` (`product_id`),
-  ADD KEY `store_id` (`store_id`);
+  ADD KEY `store_id` (`store_id`),
+  ADD KEY `outbound_logs_ibfk_3` (`operator_id`);
 
 --
 -- テーブルのインデックス `products`
@@ -315,10 +388,10 @@ ALTER TABLE `users`
 --
 
 --
--- テーブルの AUTO_INCREMENT `outbound_logs`
+-- テーブルの AUTO_INCREMENT `logs`
 --
-ALTER TABLE `outbound_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+ALTER TABLE `logs`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- テーブルの AUTO_INCREMENT `purchase_order_items`
@@ -348,7 +421,8 @@ ALTER TABLE `inventory_records`
 --
 ALTER TABLE `outbound_logs`
   ADD CONSTRAINT `outbound_logs_ibfk_1` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `outbound_logs_ibfk_2` FOREIGN KEY (`store_id`) REFERENCES `stores` (`id`) ON UPDATE CASCADE;
+  ADD CONSTRAINT `outbound_logs_ibfk_2` FOREIGN KEY (`store_id`) REFERENCES `stores` (`id`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `outbound_logs_ibfk_3` FOREIGN KEY (`operator_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- テーブルの制約 `products`

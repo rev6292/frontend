@@ -4,45 +4,214 @@ import { Product, Supplier, ScheduledIntakeItem, ScheduledIntakeStatus, UserRole
 // 例: 'https://your-domain.com/backend/api'
 const BASE_URL = 'https://pandola.xsrv.jp/backend/api';
 
+// フィールド名変換関数
+const convertFromDatabaseFormat = (data: any): any => {
+  if (Array.isArray(data)) {
+    return data.map(convertFromDatabaseFormat);
+  }
+  if (data && typeof data === 'object') {
+    const converted: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      let newKey = key;
+      let newValue = value;
+      
+      // フィールド名変換
+      switch (key) {
+        case 'parent_id':
+          newKey = 'parentId';
+          break;
+        case 'category_id':
+          newKey = 'categoryId';
+          break;
+        case 'supplier_id':
+          newKey = 'supplierId';
+          break;
+        case 'store_id':
+          newKey = 'storeId';
+          break;
+        case 'product_id':
+          newKey = 'productId';
+          break;
+        case 'cost_price':
+          newKey = 'costPrice';
+          break;
+        case 'current_stock':
+          newKey = 'currentStock';
+          break;
+        case 'minimum_stock':
+          newKey = 'minimumStock';
+          break;
+        case 'contact_person':
+          newKey = 'contactPerson';
+          break;
+        case 'line_id':
+          newKey = 'lineId';
+          break;
+        case 'hashed_password':
+          newKey = 'hashedPassword';
+          break;
+        case 'last_updated':
+          newKey = 'lastUpdated';
+          break;
+        case 'created_at':
+          newKey = 'createdAt';
+          break;
+        case 'updated_at':
+          newKey = 'updatedAt';
+          break;
+      }
+      
+      // ネストしたオブジェクトも変換
+      if (typeof newValue === 'object' && newValue !== null) {
+        newValue = convertFromDatabaseFormat(newValue);
+      }
+      
+      converted[newKey] = newValue;
+    }
+    return converted;
+  }
+  return data;
+};
+
+const convertToDatabaseFormat = (data: any): any => {
+  if (Array.isArray(data)) {
+    return data.map(convertToDatabaseFormat);
+  }
+  if (data && typeof data === 'object') {
+    const converted: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      let newKey = key;
+      let newValue = value;
+      
+      // フィールド名変換（逆変換）
+      switch (key) {
+        case 'parentId':
+          newKey = 'parent_id';
+          break;
+        case 'categoryId':
+          newKey = 'category_id';
+          break;
+        case 'supplierId':
+          newKey = 'supplier_id';
+          break;
+        case 'storeId':
+          newKey = 'store_id';
+          break;
+        case 'productId':
+          newKey = 'product_id';
+          break;
+        case 'costPrice':
+          newKey = 'cost_price';
+          break;
+        case 'currentStock':
+          newKey = 'current_stock';
+          break;
+        case 'minimumStock':
+          newKey = 'minimum_stock';
+          break;
+        case 'contactPerson':
+          newKey = 'contact_person';
+          break;
+        case 'lineId':
+          newKey = 'line_id';
+          break;
+        case 'hashedPassword':
+          newKey = 'hashed_password';
+          break;
+        case 'lastUpdated':
+          newKey = 'last_updated';
+          break;
+        case 'createdAt':
+          newKey = 'created_at';
+          break;
+        case 'updatedAt':
+          newKey = 'updated_at';
+          break;
+      }
+      
+      // ネストしたオブジェクトも変換
+      if (typeof newValue === 'object' && newValue !== null) {
+        newValue = convertToDatabaseFormat(newValue);
+      }
+      
+      converted[newKey] = newValue;
+    }
+    return converted;
+  }
+  return data;
+};
+
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ message: 'APIリクエストに失敗し、JSONの解析もできませんでした。' }));
-    console.error('API Error Data:', errorData); // エラーデータをログに出力
-    throw new Error(errorData.message || 'APIリクエストに失敗しました。');
+    let errorMessage = 'APIリクエストに失敗しました。';
+    
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+    } catch (parseError) {
+      errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    }
+    
+    console.error('API Error:', {
+      status: response.status,
+      statusText: response.statusText,
+      url: response.url,
+      message: errorMessage
+    });
+    
+    throw new Error(errorMessage);
   }
+  
   const data = await response.json();
   console.log('API Raw Response Data:', data); // 生のレスポンスデータをログに出力
   // バックエンドが { data: [...], debug: {...} } の形式で返す場合に対応
   if (data && typeof data === 'object' && data.data !== undefined) {
-    return data.data; // 実際のデータ部分を返す
+    return convertFromDatabaseFormat(data.data); // 実際のデータ部分を返す
   } else {
-    return data; // それ以外の形式の場合はそのまま返す
+    return convertFromDatabaseFormat(data); // それ以外の形式の場合はそのまま返す
   }
 };
 
 // Auth
 export const authenticateUser = async (id: string, password?: string): Promise<User> => {
-  const response = await fetch(`${BASE_URL}/auth.php`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ id, password }),
-  });
-  
-  return handleResponse(response);
+  try {
+    const response = await fetch(`${BASE_URL}/auth.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ id, password }),
+    });
+    
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Authentication API error:', error);
+    throw new Error('認証に失敗しました。サーバーに接続できません。');
+  }
 };
 
 // Products
 export const getProducts = async (storeId?: string): Promise<ProductWithStock[]> => {
-  const params = storeId ? `?storeId=${storeId}` : '';
-  const response = await fetch(`${BASE_URL}/products.php${params}`);
-  return handleResponse(response);
+  try {
+    const params = storeId ? `?storeId=${storeId}` : '';
+    const response = await fetch(`${BASE_URL}/products.php${params}`);
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Products API error:', error);
+    // エラーが発生した場合は空の配列を返す
+    return [];
+  }
 };
 
 export const getCategories = async (): Promise<Category[]> => {
-  const response = await fetch(`${BASE_URL}/categories.php`);
-  return handleResponse(response);
+  try {
+    const response = await fetch(`${BASE_URL}/categories.php`);
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Categories API error:', error);
+    // エラーが発生した場合は空の配列を返す
+    return [];
+  }
 };
 
 export const addCategory = async (category: Omit<Category, 'id'>): Promise<Category> => {
@@ -51,7 +220,7 @@ export const addCategory = async (category: Omit<Category, 'id'>): Promise<Categ
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(category),
+    body: JSON.stringify(convertToDatabaseFormat(category)),
   });
   return handleResponse(response);
 };
@@ -62,7 +231,7 @@ export const updateCategory = async (updatedCategory: Category): Promise<Categor
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(updatedCategory),
+    body: JSON.stringify(convertToDatabaseFormat(updatedCategory)),
   });
   return handleResponse(response);
 };
@@ -98,25 +267,66 @@ export const findProductByName = async (name: string): Promise<Product | undefin
 };
 
 export const addProduct = async (productData: Omit<Product, 'id' | 'lastUpdated'>, stockData: { currentStock: number, minimumStock: number, storeId: string }): Promise<Product> => {
-  const response = await fetch(`${BASE_URL}/products.php`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ ...productData, ...stockData }),
-  });
-  return handleResponse(response);
+  try {
+    // 商品データと在庫データを分離して送信
+    const productPayload = {
+      name: productData.name,
+      barcode: productData.barcode,
+      category_id: productData.categoryId,
+      cost_price: productData.costPrice || 0,
+      supplier_id: productData.supplierId,
+      description: productData.description || '',
+      store_id: stockData.storeId,
+      current_stock: stockData.currentStock,
+      minimum_stock: stockData.minimumStock
+    };
+
+    console.log('Sending product data:', productPayload);
+
+    const response = await fetch(`${BASE_URL}/products.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(productPayload),
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Add product API error:', error);
+    throw new Error('商品の追加に失敗しました。サーバーに接続できません。');
+  }
 };
 
 export const updateProductAndInventory = async (product: Product, stock: { currentStock: number, minimumStock: number }, storeId: string): Promise<Product> => {
-  const response = await fetch(`${BASE_URL}/products.php`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ ...product, ...stock, storeId }),
-  });
-  return handleResponse(response);
+  try {
+    // 商品データと在庫データを分離して送信
+    const productPayload = {
+      id: product.id,
+      name: product.name,
+      barcode: product.barcode,
+      category_id: product.categoryId,
+      cost_price: product.costPrice || 0,
+      supplier_id: product.supplierId,
+      description: product.description || '',
+      store_id: storeId,
+      current_stock: stock.currentStock,
+      minimum_stock: stock.minimumStock
+    };
+
+    console.log('Updating product data:', productPayload);
+
+    const response = await fetch(`${BASE_URL}/products.php`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(productPayload),
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Update product API error:', error);
+    throw new Error('商品の更新に失敗しました。サーバーに接続できません。');
+  }
 };
 
 export const deleteProduct = async (id: string) => {
@@ -142,8 +352,14 @@ export const batchUpsertProducts = async (productsData: (Partial<ProductWithStoc
 };
 
 export const getSuppliers = async () => {
-  const response = await fetch(`${BASE_URL}/suppliers.php`);
-  return handleResponse(response);
+  try {
+    const response = await fetch(`${BASE_URL}/suppliers.php`);
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Suppliers API error:', error);
+    // エラーが発生した場合は空の配列を返す
+    return [];
+  }
 };
 
 export const addSupplier = async (supplier: Omit<Supplier, 'id'>): Promise<Supplier> => {
@@ -152,7 +368,7 @@ export const addSupplier = async (supplier: Omit<Supplier, 'id'>): Promise<Suppl
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(supplier),
+    body: JSON.stringify(convertToDatabaseFormat(supplier)),
   });
   return handleResponse(response);
 };
@@ -163,7 +379,7 @@ export const updateSupplier = async (updatedSupplier: Supplier): Promise<Supplie
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(updatedSupplier),
+    body: JSON.stringify(convertToDatabaseFormat(updatedSupplier)),
   });
   return handleResponse(response);
 };
@@ -263,21 +479,67 @@ export const processPurchaseOrderReceipt = async (purchaseOrderId: string, recei
 };
 
 export const getAdminDashboardData = async (startDateStr: string, endDateStr: string, periodLabel: string, storeId?: string): Promise<AdminDashboardData> => {
-  const params = new URLSearchParams({
-    startDate: startDateStr,
-    endDate: endDateStr,
-    periodLabel,
-  });
-  if (storeId) params.append('storeId', storeId);
-  
-  const response = await fetch(`${BASE_URL}/admin-dashboard.php?${params}`);
-  return handleResponse(response);
+  try {
+    const params = new URLSearchParams({
+      startDate: startDateStr,
+      endDate: endDateStr,
+      periodLabel,
+    });
+    if (storeId) params.append('storeId', storeId);
+    
+    const response = await fetch(`${BASE_URL}/admin-dashboard.php?${params}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Admin dashboard API error:', error);
+    // エラーが発生した場合はデフォルトのダッシュボードデータを返す
+    return {
+      totalInventoryValue: 0,
+      lowStockItemsCount: 0,
+      pendingIntakeApprovals: 0,
+      obsoleteStockItemsCount: 0,
+      selectedPeriodSummary: {
+        periodLabel: periodLabel,
+        supplierPerformances: [],
+        totalForPeriod: 0,
+        totalForPreviousPeriod: 0,
+      },
+      currentCalendarMonthStats: {
+        month: periodLabel,
+        totalMaterialCost: 0,
+      },
+      totalIntakeItemsThisMonth: 0,
+      totalOutboundItemsThisMonth: 0,
+      topOutboundProductsThisMonth: [],
+      inventoryWatchlist: [],
+      obsoleteStockValue: 0,
+      inventoryTurnoverRate: 0,
+      inventoryMovement: [],
+      categoryPerformance: [],
+    };
+  }
 };
 
 export const getStaffDashboardData = async (storeId?: string): Promise<StaffDashboardData> => {
-  const params = storeId ? `?storeId=${storeId}` : '';
-  const response = await fetch(`${BASE_URL}/staff-dashboard.php${params}`);
-  return handleResponse(response);
+  try {
+    const params = storeId ? `?storeId=${storeId}` : '';
+    const response = await fetch(`${BASE_URL}/staff-dashboard.php${params}`);
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Staff dashboard API error:', error);
+    // エラーが発生した場合はデフォルトのダッシュボードデータを返す
+    return {
+      approxTotalInventoryValue: '約 ¥0',
+      lowStockItemsCount: 0,
+      totalIntakeItemsThisMonth: 0,
+      totalOutboundItemsThisMonth: 0,
+      topOutboundProductsThisMonth: [],
+    };
+  }
 };
 
 export const getMonthlyPurchaseReport = async (month: string, storeId?: string): Promise<MonthlyReportDataPoint[]> => {
@@ -295,8 +557,14 @@ export const getMonthlyPurchaseReport = async (month: string, storeId?: string):
 };
 
 export const getStaffUsers = async (): Promise<User[]> => {
-  const response = await fetch(`${BASE_URL}/staff-users.php`);
-  return handleResponse(response);
+  try {
+    const response = await fetch(`${BASE_URL}/staff-users.php`);
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Staff users API error:', error);
+    // エラーが発生した場合は空の配列を返す
+    return [];
+  }
 };
 
 export const addStaffUser = async (userData: Omit<User, 'id' | 'hashedPassword'> & { password?: string }): Promise<User> => {
@@ -305,7 +573,7 @@ export const addStaffUser = async (userData: Omit<User, 'id' | 'hashedPassword'>
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(userData),
+    body: JSON.stringify(convertToDatabaseFormat(userData)),
   });
   return handleResponse(response);
 };
@@ -316,7 +584,7 @@ export const updateStaffUser = async (updatedUser: User & { newPassword?: string
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(updatedUser),
+    body: JSON.stringify(convertToDatabaseFormat(updatedUser)),
   });
   return handleResponse(response);
 };
@@ -393,8 +661,14 @@ export const processIntakeBatch = async (items: { productId: string, quantity: n
 };
 
 export const getStores = async (): Promise<Store[]> => {
-  const response = await fetch(`${BASE_URL}/stores.php`);
-  return handleResponse(response);
+  try {
+    const response = await fetch(`${BASE_URL}/stores.php`);
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Stores API error:', error);
+    // エラーが発生した場合は空の配列を返す
+    return [];
+  }
 };
 
 export const addStore = async (store: Omit<Store, 'id'>): Promise<Store> => {
@@ -403,7 +677,7 @@ export const addStore = async (store: Omit<Store, 'id'>): Promise<Store> => {
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(store),
+    body: JSON.stringify(convertToDatabaseFormat(store)),
   });
   return handleResponse(response);
 };
@@ -414,7 +688,7 @@ export const updateStore = async (updatedStore: Store): Promise<Store> => {
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(updatedStore),
+    body: JSON.stringify(convertToDatabaseFormat(updatedStore)),
   });
   return handleResponse(response);
 };

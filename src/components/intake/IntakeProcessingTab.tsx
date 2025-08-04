@@ -3,12 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/contexts/StoreContext';
-import apiClient from '@/services/apiClient';
+import { getSuppliers, getProducts, processIntakeBatch } from '@/services/apiClient';
 import { ProductWithStock, Supplier } from '@/types';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { UI_TEXT } from '@/constants';
 import { MagnifyingGlassIcon, PlusIcon, TrashIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import Modal from '@/components/Modal';
+import ErrorMessage from '@/components/ErrorMessage';
 
 interface IntakeItem {
   productId: string;
@@ -38,7 +39,7 @@ const IntakeProcessingTab: React.FC = () => {
   useEffect(() => {
     const fetchSuppliers = async () => {
       try {
-        const data = await apiClient.get('/suppliers');
+        const data = await getSuppliers();
         setSuppliers(data);
       } catch (err) {
         console.error('Failed to fetch suppliers:', err);
@@ -56,7 +57,7 @@ const IntakeProcessingTab: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const products = await apiClient.get('/products', { storeId: selectedStoreId });
+      const products = await getProducts(selectedStoreId);
       const filtered = products.filter((p: ProductWithStock) =>
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.barcode.includes(searchTerm)
@@ -120,14 +121,14 @@ const IntakeProcessingTab: React.FC = () => {
         storeId: selectedStoreId,
       };
       
-      const result = await apiClient.post('/intake', payload);
+      const result = await processIntakeBatch(payload.items, payload.supplierId, payload.operatorId, payload.storeId);
 
       if (result.success) {
-        setSuccessMessage(`入荷処理が完了しました。${result.successCount}件の商品が更新されました。`);
+        setSuccessMessage(`入荷処理が完了しました。${intakeItems.length}件の商品が更新されました。`);
         setIntakeItems([]); // カートをクリア
         setSelectedSupplier(null);
       } else {
-        setError(result.message || UI_TEXT.ERROR_PROCESSING_INTAKE);
+        setError(result.errors?.join(', ') || UI_TEXT.ERROR_PROCESSING_INTAKE);
       }
     } catch (err) {
       console.error('Intake processing failed:', err);
@@ -139,7 +140,7 @@ const IntakeProcessingTab: React.FC = () => {
   };
 
   if (loading) return <LoadingSpinner message={UI_TEXT.LOADING} />;
-  if (error) return <p className="text-red-500">{error}</p>;
+  if (error) return <ErrorMessage message={error} />;
 
   return (
     <div className="space-y-6">

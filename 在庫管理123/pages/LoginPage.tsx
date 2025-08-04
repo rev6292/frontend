@@ -1,131 +1,27 @@
-'use client';
-
-import dynamic from 'next/dynamic';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { APP_TITLE, ROUTE_PATHS } from '../constants';
+import { APP_TITLE } from '../constants';
 import { KeyIcon, UserIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
-import { useRouter } from 'next/navigation';
 
-// 動的インポートでSSRを無効化
-const LoginPage = dynamic(() => Promise.resolve(LoginPageComponent), {
-  ssr: false,
-});
-
-const LoginPageComponent: React.FC = () => {
+const LoginPage: React.FC = () => {
+  const { login } = useAuth();
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
-  const [authInitialized, setAuthInitialized] = useState(false);
-  const router = useRouter();
-
-  // AuthContextの初期化を待つ
-  let currentUser = null;
-  let login = null;
-  
-  try {
-    const auth = useAuth();
-    currentUser = auth.currentUser;
-    login = auth.login;
-    if (!authInitialized) {
-      setAuthInitialized(true);
-    
-    }
-  } catch (err) {
-    console.error('AuthContext not available:', err);
-    if (!authInitialized) {
-      setAuthInitialized(true);
-    }
-  }
-
-
-
-  // ログイン状態を監視し、ログイン済みであればダッシュボードへリダイレクト
-  useEffect(() => {
-    if (currentUser && !isRedirecting) {
-      
-      setIsRedirecting(true);
-      
-      // 少し遅延を入れてからリダイレクト
-      setTimeout(() => {
-        // window.location.hrefを直接使用して確実にリダイレクト
-        window.location.href = ROUTE_PATHS.DASHBOARD;
-      }, 100);
-    }
-  }, [currentUser, router, isRedirecting]);
-
-  // リダイレクト状態をリセット（デバッグ用）
-  useEffect(() => {
-    if (!currentUser) {
-      setIsRedirecting(false);
-    }
-  }, [currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
-
-    
-    if (!login) {
-      setError('認証システムが利用できません。');
-      setIsLoading(false);
-      return;
-    }
-    
     try {
       await login(userId, password);
-
-      // ログイン成功後、useEffect がリダイレクトを処理する
+      // On successful login, the App component will automatically navigate away
     } catch (err) {
-      console.error('LoginPage: Login failed:', err);
       setError((err as Error).message || 'ログインに失敗しました。');
-    } finally {
       setIsLoading(false);
     }
   };
-
-  // AuthContextが初期化されていない場合
-  if (!authInitialized) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-900">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white">アプリケーションを初期化中...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // AuthContextが利用できない場合
-  if (!login) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-900">
-        <div className="text-center">
-          <div className="text-red-500 text-xl mb-4">⚠️</div>
-          <p className="text-white text-lg">認証システムの初期化に失敗しました。</p>
-          <p className="text-white text-sm mt-2">ページを再読み込みしてください。</p>
-        </div>
-      </div>
-    );
-  }
-
-  // currentUser が存在する場合は、リダイレクト中のローディング画面を表示
-  if (currentUser || isRedirecting) {
-
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-900">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white">ログイン中...</p>
-          <p className="text-white text-sm mt-2">ユーザー: {currentUser?.name}</p>
-          <p className="text-white text-xs mt-1">ダッシュボードにリダイレクト中...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-900">

@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Store, TableHeader } from '@/types';
-import apiClient from '@/services/apiClient';
+import { getStores, addStore, updateStore, deleteStore } from '@/services/apiClient';
 import Modal from '@/components/Modal';
 import Table from '@/components/Table';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -77,11 +77,12 @@ const StoreManagementPageComponent: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get('/stores');
+      const data = await getStores();
       setStores(data);
     } catch (err) {
-      setError(UI_TEXT.ERROR_LOADING_DATA);
-      console.error(err);
+      console.error('Error loading stores:', err);
+      setError('店舗データの読み込みに失敗しました。');
+      setStores([]);
     } finally {
       setLoading(false);
     }
@@ -102,94 +103,118 @@ const StoreManagementPageComponent: React.FC = () => {
   };
 
   const handleSaveStore = async (storeData: Store | Omit<Store, 'id'>) => {
-    setLoading(true);
     try {
       if ('id' in storeData) {
-        await apiClient.put(`/stores/${(storeData as Store).id}`, storeData);
-        await apiClient.post('/logs', { action: `店舗 ${storeData.name} の情報を更新`, userId: currentUser?.id });
+        // 更新
+        await updateStore(storeData as Store);
       } else {
-        await apiClient.post('/stores', storeData);
-        await apiClient.post('/logs', { action: `店舗 ${storeData.name} を新規追加`, userId: currentUser?.id });
+        // 新規作成
+        await addStore(storeData as Omit<Store, 'id'>);
       }
-      fetchStores();
+      await fetchStores();
       handleCloseModal();
     } catch (err) {
-      setError(`エラー: 店舗情報の保存に失敗しました。${(err as Error).message}`);
-    } finally {
-      setLoading(false);
+      console.error('Error saving store:', err);
+      setError('店舗の保存に失敗しました。');
     }
   };
 
   const handleDeleteStore = async (store: Store) => {
-    if (!store) return;
-    setLoading(true);
     try {
-      await apiClient.delete(`/stores/${store.id}`);
-      await apiClient.post('/logs', { action: `店舗 ${store.name} を削除`, userId: currentUser?.id });
-      fetchStores();
+      await deleteStore(store.id);
+      await fetchStores();
       setShowConfirmDelete(null);
     } catch (err) {
-      setError(`エラー: 店舗の削除に失敗しました。(${(err as Error).message})`);
-    } finally {
-      setLoading(false);
+      console.error('Error deleting store:', err);
+      setError('店舗の削除に失敗しました。');
     }
   };
-  
+
   const tableHeaders: TableHeader<Store>[] = [
     { key: 'name', label: UI_TEXT.STORE_NAME },
     { key: 'address', label: UI_TEXT.STORE_ADDRESS },
     { key: 'phone', label: UI_TEXT.STORE_PHONE },
-    { key: 'actions', label: UI_TEXT.ACTIONS, render: (item) => (
-      <div className="space-x-2">
-        <button onClick={() => handleOpenModal(item)} className="text-indigo-600 hover:text-indigo-900 transition-colors p-1"><PencilIcon className="h-5 w-5"/></button>
-        <button onClick={() => setShowConfirmDelete(item)} className="text-red-600 hover:text-red-900 transition-colors p-1"><TrashIcon className="h-5 w-5"/></button>
-      </div>
-    )},
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-semibold text-gray-800">{UI_TEXT.STORE_MANAGEMENT}</h1>
-        <button
-          onClick={() => handleOpenModal()}
-          className="flex items-center bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition-colors"
-        >
-          <PlusCircleIcon className="h-5 w-5 mr-2"/>
-          {UI_TEXT.ADD_NEW}店舗
+    { key: 'actions', label: '操作', render: (store) => (
+      <div className="flex space-x-2">
+        <button onClick={() => handleOpenModal(store)} className="text-blue-600 hover:text-blue-800">
+          <PencilIcon className="h-4 w-4" />
+        </button>
+        <button onClick={() => setShowConfirmDelete(store)} className="text-red-600 hover:text-red-800">
+          <TrashIcon className="h-4 w-4" />
         </button>
       </div>
+    ) },
+  ];
 
-      {loading && <LoadingSpinner message={UI_TEXT.LOADING} />}
-      {error && <p className="text-red-500 p-4 bg-red-100 rounded-md">{error}</p>}
-      {!loading && !error && (
-        <Table headers={tableHeaders} data={stores} itemKey="id" onRowClick={handleOpenModal} />
+  if (loading) return <LoadingSpinner message="店舗データを読み込み中..." />;
+
+  return (
+    <div className="space-y-8">
+      {/* ヘッダー */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">店舗管理</h1>
+            <p className="text-gray-600 mt-2">店舗情報の登録・編集・削除を行います</p>
+          </div>
+          <button
+            onClick={() => handleOpenModal()}
+            className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-sm hover:bg-blue-700 transition-colors flex items-center"
+          >
+            <PlusCircleIcon className="h-5 w-5 mr-2" />
+            新規店舗追加
+          </button>
+        </div>
+      </div>
+
+      {/* エラーメッセージ */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-700">{error}</p>
+        </div>
       )}
 
-      {isModalOpen && (
-        <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingStore ? `${UI_TEXT.EDIT}店舗` : `${UI_TEXT.ADD_NEW}店舗`}>
-          <div className="p-6">
-            <StoreForm
-              store={editingStore}
-              onSave={handleSaveStore}
-              onCancel={handleCloseModal}
-            />
+      {/* 店舗一覧 */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">店舗一覧</h2>
+        {stores.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <p>店舗が登録されていません</p>
+            <p className="text-sm mt-2">「新規店舗追加」ボタンから店舗を追加してください</p>
           </div>
-        </Modal>
-      )}
-      
-      {showConfirmDelete && (
-        <Modal isOpen={!!showConfirmDelete} onClose={() => setShowConfirmDelete(null)} title={UI_TEXT.CONFIRM_DELETE_TITLE}>
-          <div className="p-6">
-            <p className="text-gray-700 mb-2">{UI_TEXT.CONFIRM_DELETE_MESSAGE(showConfirmDelete.name)}</p>
-            <p className="text-sm text-red-600">この店舗に所属するスタッフや在庫データがある場合、削除できません。先にスタッフの所属店舗を変更し、在庫を別店舗に移管または削除してください。</p>
-            <div className="flex justify-end space-x-3 mt-6">
-              <button onClick={() => setShowConfirmDelete(null)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-md shadow-sm">{UI_TEXT.CANCEL}</button>
-              <button onClick={() => handleDeleteStore(showConfirmDelete)} className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 border border-transparent rounded-md shadow-sm">{UI_TEXT.DELETE}</button>
-            </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table headers={tableHeaders} data={stores} itemKey="id" />
           </div>
-        </Modal>
-      )}
+        )}
+      </div>
+
+      {/* モーダル */}
+      <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingStore ? '店舗編集' : '新規店舗追加'}>
+        <StoreForm store={editingStore} onSave={handleSaveStore} onCancel={handleCloseModal} />
+      </Modal>
+
+      {/* 削除確認モーダル */}
+      <Modal isOpen={!!showConfirmDelete} onClose={() => setShowConfirmDelete(null)} title="店舗削除確認">
+        <div className="space-y-4">
+          <p>「{showConfirmDelete?.name}」を削除しますか？</p>
+          <p className="text-sm text-gray-600">この操作は取り消せません。</p>
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={() => setShowConfirmDelete(null)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-md"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={() => showConfirmDelete && handleDeleteStore(showConfirmDelete)}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 border border-transparent rounded-md"
+            >
+              削除
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
